@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volúmenes de Sólidos de Revolución</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.6.4/math.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background-color: #000000; 
+            color: #ffa600; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+            margin: 0;
+        }
+        .calculator { 
+            border: 1px solid #ccc; 
+            padding: 20px; 
+            border-radius: 10px; 
+            width: 100%; 
+            max-width: 800px; 
+            background: #fff; 
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1); 
+            box-sizing: border-box;
+        }
+        .input-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .calculator input, .calculator button { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 5px; 
+            border: 1px solid #ccc; 
+            font-size: 1em; 
+            box-sizing: border-box;
+        }
+        .calculator button {
+            background-color: #ffae00;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            grid-column: span 3;
+        }
+        .calculator button:hover {
+            background-color: #1e4e8c;
+        }
+        .result { 
+            font-weight: bold; 
+            color: #2b6cb0; 
+            margin-top: 10px; 
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            text-align: center;
+        }
+        .visualization {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .example {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e2e8f0;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 800px;
+        }
+        .error {
+            color: #dc2626;
+            background-color: #000000;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Volúmenes de Sólidos de Revolución</h1>
+    <div class="calculator">
+        <div class="input-section">
+            <div>
+                <label for="radius-function">Función del radio r(x):</label>
+                <input type="text" id="radius-function" placeholder="Ej. x^2">
+            </div>
+            <div>
+                <label for="limit-a">Límite inferior (a):</label>
+                <input type="number" id="limit-a" value="0" step="0.1">
+            </div>
+            <div>
+                <label for="limit-b">Límite superior (b):</label>
+                <input type="number" id="limit-b" value="1" step="0.1">
+            </div>
+            <button onclick="calculateVolume()">Calcular Volumen</button>
+        </div>
+        <div class="result" id="result-output"></div>
+        <div class="visualization" id="3d-view"></div>
+    </div>
+    <div class="example">
+        <h3>Ejemplos de funciones:</h3>
+        <p>1. x (cono)</p>
+        <p>2. 1 (cilindro)</p>
+        <p>3. sin(x) (sólido sinusoidal)</p>
+        <p>4. sqrt(x) (paraboloide)</p>
+    </div>
+
+    <script>
+        let scene, camera, renderer, solid;
+        
+        // Inicializar la visualización 3D
+        function init3D() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(document.getElementById('3d-view').offsetWidth, 
+                           document.getElementById('3d-view').offsetHeight);
+            renderer.setClearColor(0xf3f4f6);
+            
+            document.getElementById('3d-view').innerHTML = '';
+            document.getElementById('3d-view').appendChild(renderer.domElement);
+            
+            // Configurar la cámara
+            camera.position.set(2, 2, 2);
+            camera.lookAt(0, 0, 0);
+            
+            // Agregar luz
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 1, 1);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+            
+            // Agregar grilla de referencia
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+            
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            if (solid) {
+                solid.rotation.y += 0.01;
+            }
+            renderer.render(scene, camera);
+        }
+        
+        function createSolid(func, a, b) {
+            // Limpiar sólido anterior
+            if (solid) {
+                scene.remove(solid);
+            }
+            
+            try {
+                const segments = 50;
+                const radialSegments = 32;
+                const points = [];
+                
+                // Compilar la función
+                const f = math.compile(func);
+                
+                // Generar puntos para la curva
+                for (let i = 0; i <= segments; i++) {
+                    const x = a + (b - a) * (i / segments);
+                    const r = Math.abs(f.evaluate({x: x})); // Usar valor absoluto para el radio
+                    points.push(new THREE.Vector2(r, x));
+                }
+                
+                // Crear geometría de revolución
+                const geometry = new THREE.LatheGeometry(points, radialSegments);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x2b6cb0,
+                    transparent: true,
+                    opacity: 0.8,
+                    side: THREE.DoubleSide
+                });
+                
+                solid = new THREE.Mesh(geometry, material);
+                // Rotar para que coincida con el eje x
+                solid.rotation.x = Math.PI / 2;
+                scene.add(solid);
+            } catch (error) {
+                console.error("Error al crear el sólido:", error);
+            }
+        }
+        
+        function calculateVolume() {
+            const radiusFunc = document.getElementById("radius-function").value;
+            const a = parseFloat(document.getElementById("limit-a").value);
+            const b = parseFloat(document.getElementById("limit-b").value);
+            
+            try {
+                // Validaciones
+                if (!radiusFunc) throw new Error("Por favor ingrese una función.");
+                if (isNaN(a)) throw new Error("Límite inferior no válido.");
+                if (isNaN(b)) throw new Error("Límite superior no válido.");
+                if (b <= a) throw new Error("El límite superior debe ser mayor al límite inferior.");
+                
+                // Calcular volumen usando el método del trapecio
+                const n = 1000; // número de subdivisiones
+                const dx = (b - a) / n;
+                let sum = 0;
+                const f = math.compile(radiusFunc);
+                
+                for (let i = 0; i <= n; i++) {
+                    const x = a + i * dx;
+                    const r = f.evaluate({x: x});
+                    const factor = (i === 0 || i === n) ? 0.5 : 1;
+                    sum += factor * (Math.PI * r * r);
+                }
+                
+                const volume = sum * dx;
+                
+                document.getElementById("result-output").innerHTML = 
+                    `El volumen es: ${volume.toFixed(4)} unidades cúbicas`;
+                document.getElementById("result-output").classList.remove("error");
+                
+                // Actualizar visualización 3D
+                createSolid(radiusFunc, a, b);
+                
+            } catch (error) {
+                document.getElementById("result-output").innerHTML = 
+                    `Error: ${error.message}`;
+                document.getElementById("result-output").classList.add("error");
+            }
+        }
+        
+        // Inicializar visualización 3D
+        init3D();
+        
+        // Recalcular cuando cambia el tamaño de la ventana
+        window.addEventListener('resize', function() {
+            camera.aspect = document.getElementById('3d-view').offsetWidth / 
+                          document.getElementById('3d-view').offsetHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(document.getElementById('3d-view').offsetWidth,
+                           document.getElementById('3d-view').offsetHeight);
+        });
+        
+        // Calcular al presionar Enter
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                calculateVolume();
+            }
+        });
+        
+        // Calcular inicialmente con valores por defecto
+        window.onload = calculateVolume;
+    </script>
+</body>
+</html>
